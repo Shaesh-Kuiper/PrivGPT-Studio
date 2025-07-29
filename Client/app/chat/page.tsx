@@ -415,6 +415,7 @@ export default function ChatPage() {
 
     setMessages((prev) => [...prev, tempAssistantMessage]);
     setIsStreaming(true);
+    setIsTyping(false); // Remove typing indicator when streaming starts
 
     // Create abort controller for stopping generation
     const controller = new AbortController();
@@ -1236,7 +1237,7 @@ export default function ChatPage() {
             </div>
           ))}
 
-          {isTyping && (
+          {isTyping && !isStreaming && (
             <div className="flex justify-start">
               <div className="flex items-start space-x-2 max-w-2xl">
                 <Avatar className="w-8 h-8">
