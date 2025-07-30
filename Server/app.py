@@ -73,9 +73,20 @@ def chat():
         session_name = request.form.get("session_name", "")
         user_timestamp = datetime.now() - timedelta(seconds=10)
 
-        # Mentions: fetch context
+        # Fetch current session history
+        current_session_history = ""
+        if session_id != "1":  # If not a new session
+            try:
+                current_session = mongo.db.sessions.find_one({"_id": ObjectId(session_id)})
+                if current_session and current_session.get("messages"):
+                    for msg in current_session["messages"]:
+                        current_session_history += f"{msg['role']}: {msg['content']}\n"
+            except Exception as e:
+                print(f"Error fetching current session history: {e}")
+
+        # Mentions: fetch context from other sessions
         mention_session_ids = request.form.getlist("mention_session_ids[]")
-        history_context = ""
+        mention_history_context = ""
         if mention_session_ids:
             print(mention_session_ids)
             for m_id in mention_session_ids:
@@ -83,16 +94,23 @@ def chat():
                     s = mongo.db.sessions.find_one({"_id": ObjectId(m_id)})
                     if s:
                         for m in s.get("messages", []):
-                            history_context += f"{m['role']}: {m['content']}\n"
-        if history_context:
+                            mention_history_context += f"{m['role']}: {m['content']}\n"
+
+        # Combine all context
+        combined_input = user_msg
+        if current_session_history or mention_history_context:
+            context_parts = []
+            if current_session_history:
+                context_parts.append(f"Current conversation history:\n{current_session_history}")
+            if mention_history_context:
+                context_parts.append(f"Referenced conversation context:\n{mention_history_context}")
+            
             combined_input = (
-                f"Here is some previous conversation context that you should consider:\n"
-                f"{history_context}\n\n"
+                f"Here is the conversation context:\n"
+                f"{''.join(context_parts)}\n"
                 f"Now, based on the above context, here is the user's new message:\n"
                 f"{user_msg}"
             )
-        else:
-            combined_input = user_msg
         
         # ====== File Handling (optional) ======
         uploaded_file = request.files.get("uploaded_file")
@@ -195,9 +213,20 @@ def chat_stream():
         session_name = request.form.get("session_name", "")
         user_timestamp = datetime.now() - timedelta(seconds=10)
 
-        # Mentions: fetch context
+        # Fetch current session history
+        current_session_history = ""
+        if session_id != "1":  # If not a new session
+            try:
+                current_session = mongo.db.sessions.find_one({"_id": ObjectId(session_id)})
+                if current_session and current_session.get("messages"):
+                    for msg in current_session["messages"]:
+                        current_session_history += f"{msg['role']}: {msg['content']}\n"
+            except Exception as e:
+                print(f"Error fetching current session history: {e}")
+
+        # Mentions: fetch context from other sessions
         mention_session_ids = request.form.getlist("mention_session_ids[]")
-        history_context = ""
+        mention_history_context = ""
         if mention_session_ids:
             print(mention_session_ids)
             for m_id in mention_session_ids:
@@ -205,16 +234,23 @@ def chat_stream():
                     s = mongo.db.sessions.find_one({"_id": ObjectId(m_id)})
                     if s:
                         for m in s.get("messages", []):
-                            history_context += f"{m['role']}: {m['content']}\n"
-        if history_context:
+                            mention_history_context += f"{m['role']}: {m['content']}\n"
+
+        # Combine all context
+        combined_input = user_msg
+        if current_session_history or mention_history_context:
+            context_parts = []
+            if current_session_history:
+                context_parts.append(f"Current conversation history:\n{current_session_history}")
+            if mention_history_context:
+                context_parts.append(f"Referenced conversation context:\n{mention_history_context}")
+            
             combined_input = (
-                f"Here is some previous conversation context that you should consider:\n"
-                f"{history_context}\n\n"
+                f"Here is the conversation context:\n"
+                f"{''.join(context_parts)}\n"
                 f"Now, based on the above context, here is the user's new message:\n"
                 f"{user_msg}"
             )
-        else:
-            combined_input = user_msg
         
         # ====== File Handling (optional) ======
         uploaded_file = request.files.get("uploaded_file")
