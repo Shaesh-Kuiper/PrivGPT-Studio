@@ -1053,6 +1053,7 @@ export default function ChatPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
                           onClick={() => handleRenameSession(session.id)}
+                          disabled={isStreaming}
                         >
                           <Edit className="w-4 h-4 mr-2" />
                           Rename
@@ -1060,6 +1061,7 @@ export default function ChatPage() {
                         <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => setDeleteChatSessionModal(true)}
+                          disabled={isStreaming}
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
                           Delete
@@ -1075,6 +1077,7 @@ export default function ChatPage() {
               variant="ghost"
               className="w-full justify-start"
               onClick={handleNewChatSession}
+              disabled={isStreaming}
             >
               <PlusCircle className="w-4 h-4 mr-2" />
               New Chat
@@ -1105,6 +1108,7 @@ export default function ChatPage() {
               <Switch
                 checked={streamingEnabled}
                 onCheckedChange={setStreamingEnabled}
+                disabled={isStreaming}
               />
             </div>
           </div>
@@ -1116,6 +1120,7 @@ export default function ChatPage() {
                 localModels.includes(model) ? "local" : "cloud"
               );
             }}
+            disabled={isStreaming}
           >
             <SelectTrigger>
               <SelectValue />
@@ -1313,7 +1318,7 @@ export default function ChatPage() {
                   </p>
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={removeFile}>
+              <Button variant="ghost" size="sm" onClick={removeFile} disabled={isStreaming}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
@@ -1326,6 +1331,7 @@ export default function ChatPage() {
               size="sm"
               onClick={handleVoiceInput}
               className={`${isRecording ? "text-red-500" : ""}`}
+              disabled={isStreaming}
             >
               <Mic className="w-4 h-4" />
               {isRecording && (
@@ -1347,7 +1353,7 @@ export default function ChatPage() {
               variant="outline"
               size="icon"
               onClick={() => fileInputRef.current?.click()}
-              disabled={selectedModelType == "local"}
+              disabled={selectedModelType == "local" || isStreaming}
             >
               <Plus className="w-4 h-4" />
             </Button>
@@ -1357,6 +1363,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(_event, newValue) => setInput(newValue)}
                 placeholder="Type your message and use @ to mention chats..."
+                disabled={isStreaming}
                 style={{
                   control: {
                     backgroundColor: "transparent",
@@ -1407,6 +1414,7 @@ export default function ChatPage() {
                 onKeyDown={handleKeyPress}
                 placeholder="Type your message in markdown..."
                 className="flex-1 resize-none min-h-[80px]"
+                disabled={isStreaming}
               />
             )}
             {isStreaming ? (
@@ -1420,7 +1428,7 @@ export default function ChatPage() {
             ) : (
               <Button
                 onClick={handleSend}
-                disabled={isTyping || (!uploadedFile && input.trim() === "")}
+                disabled={isTyping || isStreaming || (!uploadedFile && input.trim() === "")}
               >
                 <Send className="w-4 h-4" />
               </Button>
