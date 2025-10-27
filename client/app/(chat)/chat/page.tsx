@@ -125,21 +125,98 @@ export default function ChatPage() {
   };
 
   // Add this component inside your ChatPage component, before the return statement
+  // Helper to wrap text nodes with highlighting spans
+  const wrapTextWithHighlight = (text: string, charIndex: number) => {
+    // If charIndex is -1, no highlighting (just return the text wrapped in spans)
+    const shouldHighlight = charIndex >= 0;
+
+    const segments: Array<{ text: string; start: number; end: number }> = [];
+    let pos = 0;
+
+    // Split into words and whitespace while preserving position
+    text.split(/(\s+)/).forEach((segment) => {
+      if (segment.length > 0) {
+        const start = pos;
+        const end = pos + segment.length;
+        segments.push({ text: segment, start, end });
+        pos = end;
+      }
+    });
+
+    return (
+      <>
+        {segments.map((segment, index) => {
+          const isCurrentWord = shouldHighlight && charIndex >= segment.start && charIndex < segment.end && /\S/.test(segment.text);
+          return (
+            <span
+              key={index}
+              className={`transition-colors duration-150 ${
+                isCurrentWord
+                  ? 'bg-sky-100/90 dark:bg-sky-300/40 rounded px-0.5'
+                  : ''
+              }`}
+            >
+              {segment.text}
+            </span>
+          );
+        })}
+      </>
+    );
+  };
+
   const MessageContent = ({
     content,
     isLoading,
     isUser = false,
+    isSpeakingThis = false,
+    currentCharIndex = 0,
+    spokenText = "",
   }: {
     content: string;
     isLoading?: boolean;
     isUser?: boolean;
+    isSpeakingThis?: boolean;
+    currentCharIndex?: number;
+    spokenText?: string;
   }) => {
     if (isLoading || content === "...") {
       return <LoadingDots />;
     }
 
+    // If TTS is active, render the stripped text with word highlighting and preserved line breaks
+    if (isSpeakingThis && spokenText) {
+      const lines = spokenText.split('\n');
+      let globalCharOffset = 0;
+
+      return (
+        <div className="markdown-content">
+          {lines.map((line, lineIndex) => {
+            const lineStart = globalCharOffset;
+            const lineEnd = globalCharOffset + line.length;
+
+            // Calculate relative position for highlighting within this line
+            const relativeCharIndex = currentCharIndex >= lineStart && currentCharIndex < lineEnd
+              ? currentCharIndex - lineStart
+              : -1; // -1 means no highlighting in this line
+
+            const lineElement = line.length > 0
+              ? wrapTextWithHighlight(line, relativeCharIndex)
+              : <span>&nbsp;</span>;
+
+            globalCharOffset = lineEnd + 1; // +1 for the newline character
+
+            return (
+              <div key={lineIndex} className="mb-3 leading-relaxed text-gray-800 dark:text-gray-200">
+                {lineElement}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
     return (
-      <div className="markdown-content">
+      <div className="markdown-content" data-speaking={isSpeakingThis ? "true" : "false"}>
         <Head>
           <title>
             AI Chat | PrivGPT Studio - Chat with Local & Cloud AI Models
@@ -472,6 +549,8 @@ export default function ChatPage() {
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(
     null
   );
+  const [currentCharIndex, setCurrentCharIndex] = useState<number>(0);
+  const [spokenText, setSpokenText] = useState<string>("");
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const canceledByUserRef = useRef<boolean>(false);
 
@@ -537,12 +616,40 @@ export default function ChatPage() {
   // Utility: strip markdown and code for clearer TTS
   const stripMarkdown = (md: string) => {
     if (!md) return "";
-    let text = md.replace(/```[\s\S]*?```/g, ""); // remove fenced code blocks
-    text = text.replace(/`[^`]*`/g, ""); // remove inline code
-    text = text.replace(/!\[[^\]]*\]\([^\)]*\)/g, ""); // remove images
-    text = text.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, "$1"); // links -> text
-    text = text.replace(/[#*_>~`\-]+/g, ""); // markdown tokens
-    text = text.replace(/\s{2,}/g, " "); // collapse whitespace
+    let text = md;
+
+    // Remove code blocks first
+    text = text.replace(/```[\s\S]*?```/g, ""); // remove fenced code blocks
+    text = text.replace(/`[^`]*?`/g, ""); // remove inline code
+
+    // Remove images
+    text = text.replace(/!\[[^\]]*\]\([^\)]*\)/g, "");
+
+    // Convert links to text (keep the link text, discard URL)
+    text = text.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, "$1");
+
+    // Remove specific markdown formatting patterns (most specific first)
+    text = text.replace(/\*\*\*(.+?)\*\*\*/gs, "$1"); // ***bold italic***
+    text = text.replace(/___(.+?)___/gs, "$1"); // ___bold italic___
+    text = text.replace(/\*\*(.+?)\*\*/gs, "$1"); // **bold**
+    text = text.replace(/__(.+?)__/gs, "$1"); // __bold__
+    text = text.replace(/\*(.+?)\*/gs, "$1"); // *italic*
+    text = text.replace(/_(.+?)_/gs, "$1"); // _italic_
+    text = text.replace(/~~(.+?)~~/gs, "$1"); // ~~strikethrough~~
+
+    // Remove headers (# symbols at start of line)
+    text = text.replace(/^#{1,6}\s+/gm, "");
+
+    // Remove blockquote markers
+    text = text.replace(/^>\s+/gm, "");
+
+    // Remove horizontal rules
+    text = text.replace(/^(\*{3,}|-{3,}|_{3,})$/gm, "");
+
+    // Preserve line breaks but collapse other consecutive whitespace
+    text = text.replace(/[^\S\n]+/g, " "); // collapse spaces/tabs but not newlines
+    text = text.replace(/ *\n */g, "\n"); // clean up spaces around newlines
+
     return text.trim();
   };
 
@@ -555,6 +662,8 @@ export default function ChatPage() {
     } finally {
       setIsSpeaking(false);
       setSpeakingMessageId(null);
+      setCurrentCharIndex(0);
+      setSpokenText("");
       utteranceRef.current = null;
     }
   };
@@ -577,10 +686,21 @@ export default function ChatPage() {
     utterance.onstart = () => {
       setIsSpeaking(true);
       setSpeakingMessageId(messageId);
+      setSpokenText(text);
+      setCurrentCharIndex(0);
     };
+
+    utterance.onboundary = (event: SpeechSynthesisEvent) => {
+      if (event.name === 'word') {
+        setCurrentCharIndex(event.charIndex);
+      }
+    };
+
     utterance.onend = () => {
       setIsSpeaking(false);
       setSpeakingMessageId(null);
+      setCurrentCharIndex(0);
+      setSpokenText("");
       utteranceRef.current = null;
       canceledByUserRef.current = false;
     };
@@ -593,6 +713,8 @@ export default function ChatPage() {
       }
       setIsSpeaking(false);
       setSpeakingMessageId(null);
+      setCurrentCharIndex(0);
+      setSpokenText("");
       utteranceRef.current = null;
       canceledByUserRef.current = false;
     };
@@ -2139,6 +2261,9 @@ export default function ChatPage() {
                         content={message.content}
                         isLoading={message.content === "..."}
                         isUser={message.role === "user"}
+                        isSpeakingThis={speakingMessageId === message.id}
+                        currentCharIndex={currentCharIndex}
+                        spokenText={spokenText}
                       />
                     </div>
                     <p
